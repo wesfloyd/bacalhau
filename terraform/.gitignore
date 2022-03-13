@@ -1,6 +1,0 @@
-.tf-indexer-*
-.terraform
-terraform.tfvars
-terraform.tfstate*
-.terraform.lock.hcl
-*.tfplan
