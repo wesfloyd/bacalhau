@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/filecoin-project/bacalhau/internal/system"
 	"github.com/filecoin-project/bacalhau/internal/types"
@@ -17,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/rs/zerolog/log"
 )
 
 const JOB_EVENT_CHANNEL = "bacalhau-job-event"
@@ -42,7 +42,7 @@ func makeLibp2pHost(
 	// TODO: allow the user to provide an existing keypair
 	prvKey, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, rand.Reader)
 	if err != nil {
-		log.Println(err)
+		log.Error().Err(err)
 		return nil, err
 	}
 
@@ -104,11 +104,11 @@ func (scheduler *Libp2pScheduler) Start() error {
 	}
 	go scheduler.readLoopJobEvents()
 	go func() {
-		fmt.Printf("waiting for bacalhau libp2p context done\n")
+		log.Debug().Msg("Waiting for bacalhau libp2p context to finish.\n")
 		<-scheduler.Ctx.Done()
-		fmt.Printf("closing bacalhau libp2p daemon\n")
+		log.Debug().Msg("Closing bacalhau libp2p daemon\n")
 		scheduler.Host.Close()
-		fmt.Printf("closed bacalhau libp2p daemon\n")
+		log.Debug().Msg("Closed bacalhau libp2p daemon\n")
 	}()
 	return nil
 }
@@ -199,7 +199,7 @@ func (scheduler *Libp2pScheduler) RejectJobBid(jobId, nodeId, message string) er
 		NodeId:    nodeId,
 		EventName: system.JOB_EVENT_BID_REJECTED,
 		JobState: &types.JobState{
-			State:  system.JOB_STATE_ERROR,
+			State:  system.JOB_STATE_BID_REJECTED,
 			Status: message,
 		},
 	})
@@ -211,7 +211,7 @@ func (scheduler *Libp2pScheduler) AcceptResult(jobId, nodeId string) error {
 		NodeId:    nodeId,
 		EventName: system.JOB_EVENT_RESULTS_ACCEPTED,
 		JobState: &types.JobState{
-			State: system.JOB_STATE_COMPLETE,
+			State: system.JOB_STATE_RESULTS_ACCEPTED,
 		},
 	})
 }
@@ -223,9 +223,9 @@ func (scheduler *Libp2pScheduler) RejectResult(jobId, nodeId, message string) er
 	return scheduler.writeJobEvent(&types.JobEvent{
 		JobId:     jobId,
 		NodeId:    nodeId,
-		EventName: system.JOB_EVENT_BID_REJECTED,
+		EventName: system.JOB_EVENT_RESULTS_REJECTED,
 		JobState: &types.JobState{
-			State:  system.JOB_STATE_ERROR,
+			State:  system.JOB_STATE_RESULTS_REJECTED,
 			Status: message,
 		},
 	})
@@ -262,7 +262,25 @@ func (scheduler *Libp2pScheduler) ErrorJob(jobId, status string) error {
 		JobId:     jobId,
 		EventName: system.JOB_EVENT_ERROR,
 		JobState: &types.JobState{
-			State: system.JOB_STATE_ERROR,
+			State:  system.JOB_STATE_ERROR,
+			Status: status,
+		},
+	})
+}
+
+// this is when the requester node needs to error the status for a node
+// for example - results have been given by the compute node
+// and in checking the results, the requester node came across some kind of error
+// we need to flag that error against the node that submitted the results
+// (but we are the requester node) - so we need this util function
+func (scheduler *Libp2pScheduler) ErrorJobForNode(jobId, nodeId, status string) error {
+	return scheduler.writeJobEvent(&types.JobEvent{
+		JobId:     jobId,
+		NodeId:    nodeId,
+		EventName: system.JOB_EVENT_ERROR,
+		JobState: &types.JobState{
+			State:  system.JOB_STATE_ERROR,
+			Status: status,
 		},
 	})
 }
@@ -307,7 +325,7 @@ func (scheduler *Libp2pScheduler) writeJobEvent(event *types.JobEvent) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Sending event: %s\n", string(msgBytes))
+	log.Debug().Msgf("Sending event: %s\n", string(msgBytes))
 	return scheduler.JobEventTopic.Publish(scheduler.Ctx, msgBytes)
 }
 

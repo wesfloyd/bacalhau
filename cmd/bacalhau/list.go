@@ -6,9 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/filecoin-project/bacalhau/internal"
+	"github.com/filecoin-project/bacalhau/internal/system"
 	"github.com/filecoin-project/bacalhau/internal/types"
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -27,9 +28,9 @@ func ListJobs(
 	rpcHost string,
 	rpcPort int,
 ) (*types.ListResponse, error) {
-	args := &internal.ListArgs{}
+	args := &types.ListArgs{}
 	result := &types.ListResponse{}
-	err := JsonRpcMethodWithConnection(rpcHost, rpcPort, "List", args, result)
+	err := system.JsonRpcMethod(rpcHost, rpcPort, "List", args, result)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +40,7 @@ func ListJobs(
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List jobs on the network",
-	RunE: func(cmd *cobra.Command, cmdArgs []string) error {
+	RunE: func(cmd *cobra.Command, cmdArgs []string) error { // nolint
 
 		result, err := ListJobs(jsonrpcHost, jsonrpcPort)
 
@@ -52,7 +53,7 @@ var listCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Printf("%s\n", msgBytes)
+			log.Debug().Msg(fmt.Sprintf("List msg bytes: %s\n", msgBytes))
 			return nil
 		}
 

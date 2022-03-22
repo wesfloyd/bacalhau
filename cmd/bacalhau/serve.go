@@ -43,7 +43,7 @@ func init() {
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the bacalhau compute node",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error { // nolint
 
 		ctx := context.Background()
 
@@ -56,7 +56,7 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		computeNode, err := internal.NewComputeNode(ctx, libp2pScheduler)
+		computeNode, err := internal.NewComputeNode(ctx, libp2pScheduler, false)
 		if err != nil {
 			return err
 		}

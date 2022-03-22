@@ -2,11 +2,15 @@ package traces
 
 import (
 	"fmt"
-	"log"
+	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/muesli/clusters"
+	"github.com/muesli/kmeans"
+	"github.com/rs/zerolog/log"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -19,6 +23,8 @@ type Trace struct {
 
 type TraceCollection struct {
 	Traces []Trace
+
+	Tolerance float64
 
 	// internal
 	// resultId -> list of samples -> column -> value
@@ -115,9 +121,7 @@ func (t *TraceCollection) calculateValuesPerWaypoint() error {
 }
 
 func (t *TraceCollection) calculateValuesPerWaypointForResultIdAndColumn(resultId, column string) {
-	if os.Getenv("DEBUG") != "" {
-		fmt.Printf("Doing %s\n", resultId)
-	}
+	log.Debug().Msgf("Doing %s\n", resultId)
 	jobData := t.data[resultId]
 	currentWaypointIdx := 0
 	maxWaypointIdx := NUM_WAYPOINTS - 1
@@ -187,25 +191,21 @@ func (t *TraceCollection) Scores() (map[string]map[string]float64, error) {
 	if err != nil {
 		return nil, err
 	}
-	if os.Getenv("DEBUG") != "" {
-		fmt.Printf("WAYPOINTS --> %+v\n", t.waypoints)
-	}
+
+	log.Debug().Msgf("WAYPOINTS --> %+v\n", t.waypoints)
 
 	err = t.calculateValuesPerWaypoint()
 	if err != nil {
 		return nil, err
 	}
-	if os.Getenv("DEBUG") != "" {
-		fmt.Printf("VALUES PER WAYPOINT --> %+v\n", t.valuesPerWaypoint)
-	}
+	log.Debug().Msgf("VALUES PER WAYPOINT --> %+v\n", t.valuesPerWaypoint)
 
 	t.averages = make(map[string]map[float64]float64)
 	for _, col := range t.columns {
 		t.calcAvgs(col)
 	}
-	if os.Getenv("DEBUG") != "" {
-		fmt.Printf("AVERAGE VALUES PER WAYPOINT --> %+v\n", t.averages)
-	}
+
+	log.Debug().Msgf("AVERAGE VALUES PER WAYPOINT --> %+v\n", t.averages)
 
 	for resultId := range t.data {
 		for _, col := range t.columns {
@@ -219,5 +219,92 @@ func (t *TraceCollection) Scores() (map[string]map[string]float64, error) {
 	return res, nil
 
 	// TODO Maybe return a single value? Or just use memory for now
+
+}
+
+// naively (for now) cluster the results into two buckets: "right" and "wrong"
+func (t *TraceCollection) Cluster() ([]string, []string, error) {
+
+	scores, _ := t.Scores()
+
+	if len(scores) == 0 {
+		err := fmt.Errorf("Could not run clustering, no scores attached to traces.")
+		log.Error().Err(err)
+		return nil, nil, err
+	}
+
+	var resultsToResultIdMap = make(map[string][]string)
+
+	var d clusters.Observations
+
+	for resultId, score := range scores {
+		r := fmt.Sprintf("%f", score["real"])
+		_, ok := resultsToResultIdMap[r]
+		if !ok {
+			resultsToResultIdMap[r] = []string{}
+		}
+
+		resultsToResultIdMap[r] = append(resultsToResultIdMap[r], resultId)
+
+		d = append(d, clusters.Coordinates{
+			score["real"],
+		})
+	}
+	log.Debug().Msgf("resultsToResultIdMap = %+v\n", resultsToResultIdMap)
+
+	// map[string]map[string]float64
+	// map resultId -> column -> score (average distance from average for that column)
+
+	km := kmeans.New()
+	clusters, _ := km.Partition(d, 2)
+
+	// TODO: Print the means here
+
+	if math.Abs(float64(clusters[0].Center[0])-float64(clusters[1].Center[0])) < t.Tolerance {
+
+		allIds := []string{}
+		emptyIds := []string{}
+
+		for resultId := range scores {
+			allIds = append(allIds, resultId)
+		}
+		sort.Strings(allIds)
+		return allIds, emptyIds, nil
+	}
+
+	for _, c := range clusters {
+		log.Debug().Msgf("Centered at x: %.2f\n", c.Center[0])
+		log.Debug().Msgf("Matching data points: %+v\n\n", c.Observations)
+	}
+
+	// reconstitute the results from the clusters...
+	l := make([][]string, 2)
+
+	for i := 0; i < 2; i++ {
+		deduped := map[string]bool{}
+		for _, obs := range clusters[i].Observations {
+			o := fmt.Sprintf("%f", obs.Coordinates()[0])
+			ids := resultsToResultIdMap[o]
+			log.Debug().Msgf("Picked ids for %s: %+v\n", o, ids)
+			for _, id := range ids {
+				deduped[id] = true
+			}
+		}
+		for k := range deduped {
+			l[i] = append(l[i], k)
+		}
+		sort.Strings(l[i])
+	}
+
+	if len(l[0]) == len(l[1]) {
+		// a tie, OH NO, NO MAJORITY - HUNG PARLIAMENT 😱
+		return nil, nil, fmt.Errorf("no majority, please set concurrency to an odd number")
+	} else if len(l[0]) > len(l[1]) {
+		// 0 is winner
+		return l[0], l[1], nil
+	} else { // len(l[0]) < len(l[1])
+		// 1 is winner
+		return l[1], l[0], nil
+	}
 
 }

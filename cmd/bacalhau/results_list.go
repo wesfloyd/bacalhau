@@ -8,6 +8,7 @@ import (
 	"github.com/filecoin-project/bacalhau/internal/system"
 	"github.com/filecoin-project/bacalhau/internal/traces"
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +23,12 @@ var resultsListCmd = &cobra.Command{
 	Use:   "list [job_id]",
 	Short: "List results for a job",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, cmdArgs []string) error {
+	RunE: func(cmd *cobra.Command, cmdArgs []string) error { // nolint
+
+		job, err := getJobData(cmdArgs[0])
+		if err != nil {
+			return err
+		}
 
 		data, err := getJobResults(cmdArgs[0])
 		if err != nil {
@@ -34,17 +40,21 @@ var resultsListCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Printf("%s\n", msgBytes)
+			log.Debug().Msg(fmt.Sprintf("Result list msgBytes: %s\n", msgBytes))
 			return nil
 		}
 
 		t := table.NewWriter()
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"NODE", "IPFS", "RESULTS", "DIFFERENCE"})
+		t.AppendHeader(table.Row{"NODE", "IPFS", "RESULTS", "DIFFERENCE", "CORRECT"})
 		t.SetColumnConfigs([]table.ColumnConfig{})
 
+		log.Debug().Msg(fmt.Sprintf("Job deal tolerance: %f\n", job.Deal.Tolerance))
+
+		// TODO: load the job so we can get at Deal.Tolerance
 		clustered := traces.TraceCollection{
-			Traces: []traces.Trace{},
+			Traces:    []traces.Trace{},
+			Tolerance: job.Deal.Tolerance,
 		}
 
 		for _, row := range *data {
@@ -54,7 +64,7 @@ var resultsListCmd = &cobra.Command{
 			}
 
 			if _, err := os.Stat(resultsFolder); os.IsNotExist(err) {
-				fmt.Printf("continue not exist\n")
+				log.Warn().Msg("Results folder does not exist, continuing.")
 				continue
 			}
 			clustered.Traces = append(clustered.Traces, traces.Trace{
@@ -62,6 +72,13 @@ var resultsListCmd = &cobra.Command{
 				Filename: resultsFolder + "/metrics.log",
 			})
 		}
+
+		correctGroup, incorrectGroup, _ := clustered.Cluster()
+
+		log.Info().Msg(fmt.Sprintf(`
+Returned results:
+	Correct: %+v
+	Incorrect: %+v`, correctGroup, incorrectGroup))
 
 		scores, err := clustered.Scores()
 		if err != nil {
@@ -77,12 +94,22 @@ var resultsListCmd = &cobra.Command{
 			if _, err := os.Stat(resultsFolder); !os.IsNotExist(err) {
 				folderString = fmt.Sprintf("~/.bacalhau/%s", row.Folder)
 			}
+
+			correctStatus := "❌"
+
+			for _, correctId := range correctGroup {
+				if correctId == row.Cid {
+					correctStatus = "✅"
+				}
+			}
+
 			t.AppendRows([]table.Row{
 				{
 					row.Node,
 					fmt.Sprintf("https://ipfs.io/ipfs/%s", row.Cid),
 					folderString,
 					scores[row.Cid]["real"],
+					correctStatus,
 				},
 			})
 		}
