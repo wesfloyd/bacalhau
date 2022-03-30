@@ -11,6 +11,13 @@ GO_MINOR_VERSION = $(shell $(GO) version | cut -c 14- | cut -d' ' -f1 | cut -d'.
 GO_OS = $(shell $(GO) version | cut -c 14- | cut -d' ' -f2 | cut -d'/' -f1 | tr "[:upper:]" "[:lower:]")
 GO_ARCH = $(shell $(GO) version | cut -c 14- | cut -d' ' -f2 | cut -d'/' -f2 | tr "[:upper:]" "[:lower:]")
 
+ifeq ($(GO_ARCH), x86_64)
+GO_ARCH = "amd64"
+endif
+
+# Assuming match
+MISMATCH=
+
 # use docker runtime rather than ignite, meaning we run basically everywhere (no need for hardware virtualization support)
 export BACALHAU_RUNTIME = docker
 
@@ -44,19 +51,20 @@ PACKAGE := $(shell echo "bacalhau_$(TAG)_$(GO_ARCH)")
 all: go-arch-alignment build
 .PHONY: all
 
-build:
+build: go-arch-alignment
 	go build
 .PHONY: build
 
-go-arch-alignment:
-mismatch = 
+set-go-arch:
 ifeq ($(OS), darwin)
 ifneq ($(ARCH), $(GO_ARCH))
-mismatch = yes
+MISMATCH=yes
 endif
 endif
+.PHONY: set-go-arch
 
-ifdef mismatch
+go-arch-alignment: set-go-arch
+ifdef $(MISMATCH)
 $(info $(GO_MISMATCH_ERROR))
 $(error Please change your go binary)
 endif
@@ -130,15 +138,15 @@ test:
 
 .PHONY: test-devstack
 test-devstack:
-	go test -v -count 1 -timeout 300s -run ^TestDevStack$$ github.com/filecoin-project/bacalhau/cmd/bacalhau
+	LOG_LEVEL=debug BACALHAU_RUNTIME=docker go test -v -count 1 -timeout 3000s -run ^TestDevStack$$ github.com/filecoin-project/bacalhau/cmd/bacalhau/
 
 .PHONY: test-commands
 test-commands:
-	go test -v -count 1 -timeout 3000s -run ^TestCommands$$ github.com/filecoin-project/bacalhau/cmd/bacalhau
+	LOG_LEVEL=debug BACALHAU_RUNTIME=docker go test -v -count 1 -timeout 3000s -run ^TestCommands$$ github.com/filecoin-project/bacalhau/cmd/bacalhau
 
 .PHONY: test-badactors
 test-badactors:
-	go test -v -count 1 -timeout 3000s -run ^TestCatchBadActors$$ github.com/filecoin-project/bacalhau/cmd/bacalhau
+	LOG_LEVEL=debug BACALHAU_RUNTIME=docker go test -v -count 1 -timeout 3000s -run ^TestCatchBadActors$$ github.com/filecoin-project/bacalhau/cmd/bacalhau
 
 ################################################################################
 # Target: lint					                               #
