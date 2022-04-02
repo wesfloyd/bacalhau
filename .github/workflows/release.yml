@@ -4,9 +4,12 @@ on:
   push:
     tags:
       - "v*"
-
-env:
-  golang_ci_lint_version: 1.44.2
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        description: "Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)"
+        required: false
+        default: "false"
 
 jobs:
   release:
@@ -14,7 +17,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       GOVER: ${{ matrix.go-version }}
-      GOLANGCILINT_VER: v1.44
+      GOLANGCILINT_VER: v1.45
       GOOS: ${{ matrix.target_os }}
       GOARCH: ${{ matrix.target_arch }}
       GOPROXY: https://proxy.golang.org
@@ -22,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [1.17]
+        go-version: [1.17.6]
         os: [ubuntu-latest]
         target_arch: [amd64]
         include:
@@ -41,21 +44,21 @@ jobs:
         uses: mxschmitt/action-tmate@v3.11
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled }}
 
-#       - uses: evantorrie/mott-the-tidier@v1-beta
-#         with:
-#           gomods: |
-#             **/go.mod
-#             -tools/go.mod
-#       - uses: stefanzweifel/git-auto-commit-action@v4
-#         with:
-#           commit_message: Auto-fix go.sum discrepancies
+      #       - uses: evantorrie/mott-the-tidier@v1-beta
+      #         with:
+      #           gomods: |
+      #             **/go.mod
+      #             -tools/go.mod
+      #       - uses: stefanzweifel/git-auto-commit-action@v4
+      #         with:
+      #           commit_message: Auto-fix go.sum discrepancies
 
       - name: golangci-lint
         if: matrix.target_arch == 'amd64' && matrix.target_os == 'linux'
-        uses: golangci/golangci-lint-action@v2.2.1
+        uses: golangci/golangci-lint-action@v3.1.0
         with:
           version: ${{ env.GOLANGCILINT_VER }}
-          
+
       - name: Run go mod tidy check diff
         if: matrix.target_arch == 'amd64' && matrix.target_os == 'linux'
         run: make modtidy check-diff
