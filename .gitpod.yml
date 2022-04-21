@@ -5,10 +5,11 @@ tasks:
       cd ..
       wget https://dist.ipfs.io/go-ipfs/v0.11.0/go-ipfs_v0.11.0_linux-amd64.tar.gz
       tar -xvzf go-ipfs_v0.11.0_linux-amd64.tar.gz
-      sudo cp ipfs /usr/local/bin/
+      sudo cp go-ipfs/ipfs /usr/local/bin/
 
     command: echo 'start script'
 
 vscode:
   extensions:
     - hashicorp.terraform
+    - golang.go
