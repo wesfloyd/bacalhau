@@ -70,7 +70,17 @@ JSON_PORT_2=41347
 * Open an additional terminal window to be used for data submission to the local IPFS instances and and job submission to the 3 node devestack Bacalhau cluster.
 * Copy and paste the IPFS and JSON port variables into the new terminal window.
 
-## Add files to IPFS
+## Unique RPC port per node
+
+Each node has it's own `--jsonrpc-port` value.  This means you can use the `go run .` cli in isolation from the other 2 nodes.
+
+For example - to view the current job list from the perspective of only one of the 3 nodes:
+
+```bash
+go run . --jsonrpc-port=$JSON_PORT_0 list
+```
+
+## Adding files to IPFS, unique IPFS path per node
 
 Each node has it's own `IPFS_PATH` value which points to a path on the local filesystem.  This allows to use the ipfs cli to test adding files to one or multiple nodes.  This is especially useful when you want to test self selection of a job based on whether the cid is *local* to that node.
 
@@ -81,24 +91,11 @@ cid=$( IPFS_PATH=$IPFS_PATH_0 ipfs add -q ./testdata/grep_file.txt )
 ```
 *Note: the CID is saved as an environment variable so that it can be referenced in the job submission step.
 
-## Set a json rpc port
-
-Each node has it's own `--jsonrpc-port` value.  This means you can use the `go run .` cli in isolation from the other 2 nodes.
-
-For example - to view the current job list from the perspective of only one of the 3 nodes:
-
-```bash
-# Note: replace 12345 this with the correct port from the output
-export NODE1_JSONRPC_PORT=12345
-go run . --jsonrpc-port=$NODE1_JSONRPC_PORT list
-```
-
 ## Submit a simple job
 
 This will submit a simple job to a single node:
 
 ```bash
-cid=$( IPFS_PATH=$IPFS_PATH_0 ipfs add -q ./testdata/grep_file.txt )
 go run . --jsonrpc-port=$JSON_PORT_0 submit --cids=$cid --commands="grep kiwi /ipfs/$cid"
 go run . --jsonrpc-port=$JSON_PORT_0 list
 ```
