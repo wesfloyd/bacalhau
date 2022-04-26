@@ -1,6 +1,10 @@
 # List the start up tasks. Learn more https://www.gitpod.io/docs/config-start-tasks/
 tasks:
   - init: |
+      go install golang.org/dl/go1.17@latest
+      go1.17 download
+      mv /home/gitpod/go/bin/go /home/gitpod/go/bin/go1.18.bak
+      ln -sf /workspace/go/bin/go1.17 /home/gitpod/go/bin/go
       go build
       cd ..
       wget https://dist.ipfs.io/go-ipfs/v0.11.0/go-ipfs_v0.11.0_linux-amd64.tar.gz
